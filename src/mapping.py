@@ -16,9 +16,9 @@ from nav_msgs.msg import OccupancyGrid, MapMetaData
 from geometry_msgs.msg import Pose, Point, Quaternion
 from sensor_msgs.msg import LaserScan
 import tf
-
+from nav_msgs.msg import Odometry
+import time
 import numpy as np
-
 
 class Map(object)                      :
     """
@@ -123,6 +123,10 @@ class Mapper(object)                   :
         # messages. If we buffer those messages we will fall behind
         # and end up processing really old scans. Better to just drop
         # old scans and always work with the most recent available.
+        self.position = [0,0]
+        rospy.Subscriber('odom',
+                         Odometry, self.odom_callback, queue_size=1)
+        time.sleep(0.2)
         rospy.Subscriber('base_scan_1',
                          LaserScan, self.scan_callback, queue_size=1)
 
@@ -134,13 +138,32 @@ class Mapper(object)                   :
 
         rospy.spin()
 
+    def odom_callback(self,odom):
+        # global myOdom = odom
+        pos =  odom.pose.pose.position
+        self.position[0] = pos.x
+        self.position[1] = pos.y
+
 
     def scan_callback(self, scan)      :
         """ Update the map on every scan callback. """
 
         # Fill some cells in the map just so we can see that something is
         # being published.
+        Lresol = 10
         r = scan.ranges[0]
+        xt = [self.position[0]+20, self.position[1]+20, np.pi/4]
+        # for k in range(0,len(scan.ranges)-1):
+        scanAngles = np.linspace(1/2*np.pi,-1/2*np.pi,len(scan.ranges))
+        lidar_local = np.array([xt[0]+scan.ranges*np.cos(scanAngles+xt[2]), xt[1]-(scan.ranges*np.sin(scanAngles+xt[2]))])
+
+        # print len(lidar_local[1])
+        xtg = [np.ceil(xt[1]*Lresol),np.ceil(xt[2]*Lresol)]
+        for k in range(0,len(scan.ranges)-1):
+            if scan.ranges[k]<scan.range_max:
+                rtl = np.ceil(lidar_local[:,k]*Lresol)
+                self._map.grid[rtl[1]][rtl[0]]=1
+
         theta = scan.angle_min+0*scan.angle_increment
         print r
         print theta
@@ -163,6 +186,7 @@ class Mapper(object)                   :
         grid_msg = self._map.to_message()
         self._map_data_pub.publish(grid_msg.info)
         self._map_pub.publish(grid_msg)
+
 
 class bresenham:
 	def __init__(self, start, end):
