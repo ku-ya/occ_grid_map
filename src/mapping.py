@@ -19,6 +19,9 @@ import tf
 from nav_msgs.msg import Odometry
 import time
 import numpy as np
+from scipy.stats import norm
+import matplotlib.pyplot as plt
+myRes = 0.1
 
 class Map(object)                      :
     """
@@ -39,8 +42,8 @@ class Map(object)                      :
     with increasing row number.
     """
 
-    def __init__(self, origin_x=-20, origin_y=-20, resolution=0.1,
-                 width=500, height=500):
+    def __init__(self, origin_x=0, origin_y=0, resolution=myRes,
+                 width=20, height=20):
         """ Construct an empty occupancy grid.
 
         Arguments                      : origin_x,
@@ -60,9 +63,9 @@ class Map(object)                      :
         self.origin_x = origin_x
         self.origin_y = origin_y
         self.resolution = resolution
-        self.width = width
-        self.height = height
-        self.grid = np.zeros((height, width))
+        self.width = width/resolution
+        self.height = height/resolution
+        self.grid = 0.5*np.ones((height/resolution, width/resolution))
 
     def to_message(self)               :
         """ Return a nav_msgs/OccupancyGrid representation of this map. """
@@ -123,12 +126,14 @@ class Mapper(object)                   :
         # messages. If we buffer those messages we will fall behind
         # and end up processing really old scans. Better to just drop
         # old scans and always work with the most recent available.
-        self.position = [0,0]
+        self.position = [0,0,0]
         rospy.Subscriber('odom',
                          Odometry, self.odom_callback, queue_size=1)
         time.sleep(0.2)
         rospy.Subscriber('base_scan_1',
                          LaserScan, self.scan_callback, queue_size=1)
+
+
 
         # Latched publishers are used for slow changing topics like
         # maps. Data will sit on the topic until someone reads it.
@@ -143,6 +148,13 @@ class Mapper(object)                   :
         pos =  odom.pose.pose.position
         self.position[0] = pos.x
         self.position[1] = pos.y
+        orientation = odom.pose.pose.orientation
+        quaternion = (orientation.x,orientation.y,orientation.z, orientation.w)
+        euler = tf.transformations.euler_from_quaternion(quaternion)
+        roll = euler[0]
+        pitch = euler[1]
+        yaw = euler[2]
+        self.position[2] =  yaw
 
 
     def scan_callback(self, scan)      :
@@ -150,35 +162,83 @@ class Mapper(object)                   :
 
         # Fill some cells in the map just so we can see that something is
         # being published.
-        Lresol = 10
+        Lresol = 1/myRes
         r = scan.ranges[0]
-        xt = [self.position[0]+20, self.position[1]+20, np.pi/4]
+        xt = [self.position[0]+1, self.position[1]+1, self.position[2]]
         # for k in range(0,len(scan.ranges)-1):
         scanAngles = np.linspace(1/2*np.pi,-1/2*np.pi,len(scan.ranges))
         lidar_local = np.array([xt[0]+scan.ranges*np.cos(scanAngles+xt[2]), xt[1]-(scan.ranges*np.sin(scanAngles+xt[2]))])
 
         # print len(lidar_local[1])
-        xtg = [np.ceil(xt[1]*Lresol),np.ceil(xt[2]*Lresol)]
+        xtg = [int(np.ceil(xt[0]*Lresol)),int(np.ceil(xt[1]*Lresol))]
+        self._map.grid[xtg[1],xtg[0]]=0 # set the robot position grid as empty
+
         for k in range(0,len(scan.ranges)-1):
             if scan.ranges[k]<scan.range_max:
                 rtl = np.ceil(lidar_local[:,k]*Lresol)
-                self._map.grid[rtl[1]][rtl[0]]=1
-
-        theta = scan.angle_min+0*scan.angle_increment
-        print r
-        print theta
-        l = bresenham((0,0),(3,4))
-        print l.path
-        # self._map.grid[0, 0] = 1.0
-        # self._map.grid[0, 1] = .9
-        # self._map.grid[0, 2] = .7
-        # self._map.grid[1, 0] = .5
-        # self._map.grid[2, 0] = .3
-
+                rtli = [0,0]
+                rtli[0] = int(rtl[0])
+                rtli[1] = int(rtl[1])
+                l = bresenham(xtg,rtli)
+                self.EISM(l.path,scan.ranges[k])
+                # for j in l.path:
+                    # self._map.grid[j[1]][j[0]]=0.3
 
         # Now that the map is updated, publish it!
         rospy.loginfo("Scan is processed, publishing updated map.")
         self.publish_map()
+    def EISM(self,cell_path,r_s):
+        n = len(cell_path)
+        Prtl = np.zeros(n)
+        for k in range(0,n-1):
+            index = cell_path[k]
+            Prtl[k] = self._map.grid[index[0]][index[1]]
+
+        # initialize
+        Prtl[n-1] = 1.0
+        Prtl[0] = 0.0
+        sigma_s = 0.1
+        pz_xr = self.sensorFM(n,r_s,sigma_s)
+
+        # plt.plot(pz_xr)
+        # plt.show()
+
+
+        a = np.zeros(n)
+        b = a
+        c = a
+        d = a
+        Pr_zxz = a
+        Pnr_zxz = a
+        for k in range(0,n-1):
+            if k == 1:
+                a[0] = 0.0
+                b[0] = 1.0
+                c[0] = pz_xr[0]
+            else:
+                a[k] = a[k-1] + b[k-1]*pz_xr[k-1]*Prtl[k-1]
+                b[k] = b[k-1]*(1-Prtl[k-1])
+                c[k] = b[k]*pz_xr[k]
+        d[n-1] = 0
+        for p in range(0,n-2):
+            k = n - 2 - p
+            d[k] = d[k+1] + b[k]*pz_xr[k + 1]*Prtl[k + 1]
+
+        for k in range(0,n-1):
+            Pr_zxz[k] = a[k] + c[k]
+            Pnr_zxz[k] = a[k] + d[k]
+
+        for k in range(0,n-1):
+            index = cell_path[k]
+            e = Prtl[k]*Pr_zxz[k]
+            f = (1-Prtl[k])*Pnr_zxz[k]
+            if not (e+f)==0:
+                self._map.grid[index[1]][index[0]] = e/(e+f)
+
+
+    def sensorFM(self,n,r_s,sigma_s):
+        x = np.linspace(0,r_s,n)
+        return norm.pdf(x,loc=r_s,scale=sigma_s)
 
 
     def publish_map(self):
@@ -197,12 +257,12 @@ class bresenham:
 		self.steep = abs(self.end[1]-self.start[1]) > abs(self.end[0]-self.start[0])
 
 		if self.steep:
-			print 'Steep'
+			# print 'Steep'
 			self.start = self.swap(self.start[0],self.start[1])
 			self.end = self.swap(self.end[0],self.end[1])
 
 		if self.start[0] > self.end[0]:
-			print 'flippin and floppin'
+			# print 'flippin and floppin'
 			_x0 = int(self.start[0])
 			_x1 = int(self.end[0])
 			self.start[0] = _x1
@@ -236,11 +296,11 @@ class bresenham:
 				y += ystep
 				error -= 1.0
 
-		print start
-		print end
-		print
-		print self.start
-		print self.end
+		# print start
+		# print end
+		# print
+		# print self.start
+		# print self.end
 
 	def swap(self,n1,n2):
 		return [n2,n1]
