@@ -21,6 +21,7 @@ import time
 import numpy as np
 from scipy.stats import norm
 import matplotlib.pyplot as plt
+import message_filters
 myRes = 0.1
 
 class Map(object)                      :
@@ -127,12 +128,50 @@ class Mapper(object)                   :
         # and end up processing really old scans. Better to just drop
         # old scans and always work with the most recent available.
         self.position = [0,0,0]
-        rospy.Subscriber('odom',
-                         Odometry, self.odom_callback, queue_size=1)
-        time.sleep(0.2)
-        rospy.Subscriber('base_scan_1',
-                         LaserScan, self.scan_callback, queue_size=1)
 
+
+        def callback(odom,scan):
+            # rospy.Subscriber('odom',
+                                    #  Odometry, self.odom_callback, queue_size=1)
+            # rospy.Subscriber('base_scan_1',
+                                    #  LaserScan, self.scan_callback, queue_size=1)
+            pos =  odom.pose.pose.position
+            self.position[0] = pos.x
+            self.position[1] = pos.y
+            orientation = odom.pose.pose.orientation
+            quaternion = (orientation.x,orientation.y,orientation.z, orientation.w)
+            euler = tf.transformations.euler_from_quaternion(quaternion)
+            roll = euler[0]
+            pitch = euler[1]
+            yaw = euler[2]
+            self.position[2] =  yaw
+            Lresol = 1/myRes
+            r = scan.ranges[0]
+            xt = [self.position[0]+1, self.position[1]+1, self.position[2]]
+            # for k in range(0,len(scan.ranges)-1):
+            scanAngles = np.linspace(1/2*np.pi,-1/2*np.pi,len(scan.ranges))
+            lidar_local = np.array([xt[0]+scan.ranges*np.cos(scanAngles+xt[2]), xt[1]-(scan.ranges*np.sin(scanAngles+xt[2]))])
+
+            # print len(lidar_local[1])
+            xtg = [int(np.ceil(xt[0]*Lresol)),int(np.ceil(xt[1]*Lresol))]
+            self._map.grid[xtg[1],xtg[0]]=0 # set the robot position grid as empty
+
+            for k in range(0,len(scan.ranges)-1):
+                if scan.ranges[k]<scan.range_max:
+                    rtl = np.ceil(lidar_local[:,k]*Lresol)
+                    rtli = [0,0]
+                    rtli[0] = int(rtl[0])
+                    rtli[1] = int(rtl[1])
+                    l = bresenham(xtg,rtli)
+                    self.EISM(l.path,scan.ranges[k])
+            # Now that the map is updated, publish it!
+            rospy.loginfo("Scan is processed, publishing updated map.")
+            self.publish_map()
+            
+        odom_sub = message_filters.Subscriber('odom',Odometry)
+        scan_sub = message_filters.Subscriber('base_scan_1',LaserScan)
+        ts = message_filters.TimeSynchronizer([odom_sub,scan_sub],10)
+        ts.registerCallback(callback)
 
 
         # Latched publishers are used for slow changing topics like
@@ -159,7 +198,6 @@ class Mapper(object)                   :
 
     def scan_callback(self, scan)      :
         """ Update the map on every scan callback. """
-
         # Fill some cells in the map just so we can see that something is
         # being published.
         Lresol = 1/myRes
@@ -181,9 +219,6 @@ class Mapper(object)                   :
                 rtli[1] = int(rtl[1])
                 l = bresenham(xtg,rtli)
                 self.EISM(l.path,scan.ranges[k])
-                # for j in l.path:
-                    # self._map.grid[j[1]][j[0]]=0.3
-
         # Now that the map is updated, publish it!
         rospy.loginfo("Scan is processed, publishing updated map.")
         self.publish_map()
@@ -232,8 +267,7 @@ class Mapper(object)                   :
             index = cell_path[k]
             e = Prtl[k]*Pr_zxz[k]
             f = (1-Prtl[k])*Pnr_zxz[k]
-            if not (e+f)==0:
-                self._map.grid[index[1]][index[0]] = e/(e+f)
+            self._map.grid[index[1]][index[0]] = 0# e/(e+f)
 
 
     def sensorFM(self,n,r_s,sigma_s):
