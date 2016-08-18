@@ -44,7 +44,7 @@ class Map(object)                      :
     """
 
     def __init__(self, origin_x=0, origin_y=0, resolution=myRes,
-                 width=20, height=20):
+                 width=22, height=22):
         """ Construct an empty occupancy grid.
 
         Arguments                      : origin_x,
@@ -147,7 +147,7 @@ class Mapper(object)                   :
             self.position[2] =  yaw
             Lresol = 1/myRes
             r = scan.ranges[0]
-            xt = [self.position[0]+1, self.position[1]+1, self.position[2]]
+            xt = [self.position[0]+1.0, self.position[1]+1.0, self.position[2]]
             # for k in range(0,len(scan.ranges)-1):
             scanAngles = np.linspace(1/2*np.pi,-1/2*np.pi,len(scan.ranges))
             lidar_local = np.array([xt[0]+scan.ranges*np.cos(scanAngles+xt[2]), xt[1]-(scan.ranges*np.sin(scanAngles+xt[2]))])
@@ -167,7 +167,7 @@ class Mapper(object)                   :
             # Now that the map is updated, publish it!
             rospy.loginfo("Scan is processed, publishing updated map.")
             self.publish_map()
-            
+
         odom_sub = message_filters.Subscriber('odom',Odometry)
         scan_sub = message_filters.Subscriber('base_scan_1',LaserScan)
         ts = message_filters.TimeSynchronizer([odom_sub,scan_sub],10)
@@ -222,31 +222,30 @@ class Mapper(object)                   :
         # Now that the map is updated, publish it!
         rospy.loginfo("Scan is processed, publishing updated map.")
         self.publish_map()
+
     def EISM(self,cell_path,r_s):
         n = len(cell_path)
-        Prtl = np.zeros(n)
+        Prtl = np.zeros(n+1)
         for k in range(0,n-1):
             index = cell_path[k]
-            Prtl[k] = self._map.grid[index[0]][index[1]]
+            Prtl[k] = self._map.grid[index[1]][index[0]]
 
         # initialize
-        Prtl[n-1] = 1.0
         Prtl[0] = 0.0
-        sigma_s = 0.1
+        sigma_s = 0.05
         pz_xr = self.sensorFM(n,r_s,sigma_s)
 
         # plt.plot(pz_xr)
         # plt.show()
 
-
         a = np.zeros(n)
-        b = a
-        c = a
-        d = a
-        Pr_zxz = a
-        Pnr_zxz = a
+        b = np.zeros(n)
+        c = np.zeros(n)
+        d = np.zeros(n)
+        Pr_zxz = np.zeros(n)
+        Pnr_zxz = np.zeros(n)
         for k in range(0,n-1):
-            if k == 1:
+            if k == 0:
                 a[0] = 0.0
                 b[0] = 1.0
                 c[0] = pz_xr[0]
@@ -254,9 +253,9 @@ class Mapper(object)                   :
                 a[k] = a[k-1] + b[k-1]*pz_xr[k-1]*Prtl[k-1]
                 b[k] = b[k-1]*(1-Prtl[k-1])
                 c[k] = b[k]*pz_xr[k]
+
         d[n-1] = 0
-        for p in range(0,n-2):
-            k = n - 2 - p
+        for k in range(n-2,0,-1):
             d[k] = d[k+1] + b[k]*pz_xr[k + 1]*Prtl[k + 1]
 
         for k in range(0,n-1):
@@ -266,8 +265,10 @@ class Mapper(object)                   :
         for k in range(0,n-1):
             index = cell_path[k]
             e = Prtl[k]*Pr_zxz[k]
-            f = (1-Prtl[k])*Pnr_zxz[k]
-            self._map.grid[index[1]][index[0]] = 0# e/(e+f)
+            f = (1.0-Prtl[k])*Pnr_zxz[k]
+            if not np.isnan(e/(e+f)):
+                self._map.grid[index[1]][index[0]] = e/(e+f)
+
 
 
     def sensorFM(self,n,r_s,sigma_s):
@@ -280,6 +281,7 @@ class Mapper(object)                   :
         grid_msg = self._map.to_message()
         self._map_data_pub.publish(grid_msg.info)
         self._map_pub.publish(grid_msg)
+        # rospy.signal_shutdown("stop spin")
 
 
 class bresenham:
