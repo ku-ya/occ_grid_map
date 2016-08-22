@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(occ_grid_mapping)
+project(occ_grid_map)
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
@@ -70,7 +70,6 @@ find_package(catkin REQUIRED COMPONENTS
 #   std_msgs
 # )
 
-
 ################################################
 ## Declare ROS dynamic reconfigure parameters ##
 ################################################
@@ -102,7 +101,7 @@ find_package(catkin REQUIRED COMPONENTS
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
 #  INCLUDE_DIRS include
-#  LIBRARIES occ_grid_mapping
+#  LIBRARIES occ_grid_map
 #  CATKIN_DEPENDS roscpp rospy std_msgs
 #  DEPENDS system_lib
 )
@@ -119,38 +118,26 @@ include_directories(
 )
 
 ## Declare a C++ library
-# add_library(occ_grid_mapping
-#   src/${PROJECT_NAME}/occ_grid_mapping.cpp
+# add_library(occ_grid_map
+#   src/${PROJECT_NAME}/occ_grid_map.cpp
 # )
 
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
 ## either from message generation or dynamic reconfigure
-# add_dependencies(occ_grid_mapping ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+# add_dependencies(occ_grid_map ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Declare a C++ executable
-# add_executable(occ_grid_mapping_node src/occ_grid_mapping_node.cpp)
+# add_executable(occ_grid_map_node src/occ_grid_map_node.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
-# add_dependencies(occ_grid_mapping_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+# add_dependencies(occ_grid_map_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
-# target_link_libraries(occ_grid_mapping_node
+# target_link_libraries(occ_grid_map_node
 #   ${catkin_LIBRARIES}
 # )
-
-find_package(PkgConfig REQUIRED)
-pkg_search_module(EIGEN REQUIRED eigen3)
-
-include_directories(${EIGEN_INCLUDE_DIRS})
-link_directories(${EIGEN_LIBRARY_DIRS})
-#include_directories(include ${catkin_INCLUDE_DIRS} ${Eigen_INCLUDE_DIRS})
-include_directories(include ${catkin_INCLUDE_DIRS})
-add_executable(talker src/laser_to_pcl.cpp)
-target_link_libraries(talker ${catkin_LIBRARIES})
-add_dependencies(talker beginner_tutorials_generate_messages_cpp)
-
 
 #############
 ## Install ##
@@ -167,7 +154,7 @@ add_dependencies(talker beginner_tutorials_generate_messages_cpp)
 # )
 
 ## Mark executables and/or libraries for installation
-# install(TARGETS occ_grid_mapping occ_grid_mapping_node
+# install(TARGETS occ_grid_map occ_grid_map_node
 #   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 #   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 #   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
@@ -192,7 +179,7 @@ add_dependencies(talker beginner_tutorials_generate_messages_cpp)
 #############
 
 ## Add gtest based cpp test target and link libraries
-# catkin_add_gtest(${PROJECT_NAME}-test test/test_occ_grid_mapping.cpp)
+# catkin_add_gtest(${PROJECT_NAME}-test test/test_occ_grid_map.cpp)
 # if(TARGET ${PROJECT_NAME}-test)
 #   target_link_libraries(${PROJECT_NAME}-test ${PROJECT_NAME})
 # endif()
