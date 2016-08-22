@@ -38,7 +38,7 @@ pioneer2dx_base
 (
   # can refer to the robot by this name
   name "r0"
-  pose [ 1 1 0 90.000 ]
+  pose [ 1 1 0 30.000 ]
 
   # pioneer2dx's sonars	will be ranger:0 and the laser will be ranger:1
   sicklaser( pose [ 0 0 0 0 ] )

@@ -13,8 +13,8 @@ from nav_msgs.msg import Odometry
 import time
 import numpy as np
 from scipy.stats import norm
-import matplotlib.pyplot as plt
 import message_filters
+from bresenham import bresenham
 myRes = 0.1
 
 class Map(object):
@@ -132,8 +132,9 @@ class Mapper(object)                   :
             r = scan.ranges[0]
             xt = [self.position[0]+1.0, self.position[1]+1.0, self.position[2]]
             # for k in range(0,len(scan.ranges)-1):
-
-            scanAngles = np.linspace(scan.angle_min,scan.angle_max,len(scan.ranges))
+            scan.ranges = scan.ranges
+            # print scan.ranges
+            scanAngles = np.linspace(scan.angle_min,scan.angle_max,len(scan.ranges),-1)
             lidar_local = np.array([xt[0]+scan.ranges*np.cos(scanAngles+xt[2]), xt[1]+(scan.ranges*np.sin(scanAngles+xt[2]))])
 
             # print len(lidar_local[1])
@@ -185,6 +186,63 @@ class Mapper(object)                   :
 
         rospy.spin()
 
+    def EISM(self,cell_path,r_s):
+        n = len(cell_path)
+        Prtl = np.zeros(n)
+        for k in range(0,n-1):
+            index = cell_path[k]
+            Prtl[k] = self._map.grid[index[1]][index[0]]
+
+        # initialize
+        Prtl[0] = 0.0
+        sigma_s = myRes*3
+        pz_xr = self.sensorFM(n,r_s,sigma_s)
+
+        # plt.plot(pz_xr)
+        # plt.show()
+
+        a = np.zeros(n)
+        b = np.zeros(n)
+        c = np.zeros(n)
+        d = np.zeros(n)
+        Pr_zxz = np.zeros(n)
+        Pnr_zxz = np.zeros(n)
+        for k in range(0,n-1):
+            if k == 0:
+                a[0] = 0.0
+                b[0] = 1.0
+                c[0] = pz_xr[0]
+            else:
+                a[k] = a[k-1] + b[k-1]*pz_xr[k-1]*Prtl[k-1]
+                b[k] = b[k-1]*(1-Prtl[k-1])
+                c[k] = b[k]*pz_xr[k]
+
+        d[n-1] = 0
+        for k in range(n-2,0,-1):
+            d[k] = d[k+1] + b[k]*pz_xr[k + 1]*Prtl[k + 1]
+
+        for k in range(0,n-1):
+            Pr_zxz[k] = a[k] + c[k]
+            Pnr_zxz[k] = a[k] + d[k]
+
+        for k in range(0,n-1):
+            index = cell_path[k]
+            e = Prtl[k]*Pr_zxz[k]
+            f = (1.0-Prtl[k])*Pnr_zxz[k]
+            if not np.isnan(e/(e+f)):
+                self._map.grid[index[1]][index[0]] = e/(e+f)
+
+    def sensorFM(self,n,r_s,sigma_s):
+        x = np.linspace(0,r_s,n)
+        return norm.pdf(x,loc=r_s,scale=sigma_s)
+
+
+    def publish_map(self):
+        """ Publish the map. """
+        grid_msg = self._map.to_message()
+        self._map_data_pub.publish(grid_msg.info)
+        self._map_pub.publish(grid_msg)
+        # rospy.signal_shutdown("stop spin")
     def odom_callback(self,odom):
         # global myOdom = odom
         pos =  odom.pose.pose.position
@@ -226,142 +284,7 @@ class Mapper(object)                   :
         rospy.loginfo("Scan is processed, publishing updated map.")
         self.publish_map()
 
-    def EISM(self,cell_path,r_s):
-        n = len(cell_path)
-        Prtl = np.zeros(n)
-        for k in range(0,n-1):
-            index = cell_path[k]
-            Prtl[k] = self._map.grid[index[1]][index[0]]
 
-        # initialize
-        Prtl[0] = 0.0
-        sigma_s = 0.3
-        pz_xr = self.sensorFM(n,r_s,sigma_s)
-
-        # plt.plot(pz_xr)
-        # plt.show()
-
-        a = np.zeros(n)
-        b = np.zeros(n)
-        c = np.zeros(n)
-        d = np.zeros(n)
-        Pr_zxz = np.zeros(n)
-        Pnr_zxz = np.zeros(n)
-        for k in range(0,n-1):
-            if k == 0:
-                a[0] = 0.0
-                b[0] = 1.0
-                c[0] = pz_xr[0]
-            else:
-                a[k] = a[k-1] + b[k-1]*pz_xr[k-1]*Prtl[k-1]
-                b[k] = b[k-1]*(1-Prtl[k-1])
-                c[k] = b[k]*pz_xr[k]
-
-        d[n-1] = 0
-        for k in range(n-2,0,-1):
-            d[k] = d[k+1] + b[k]*pz_xr[k + 1]*Prtl[k + 1]
-
-        for k in range(0,n-1):
-            Pr_zxz[k] = a[k] + c[k]
-            Pnr_zxz[k] = a[k] + d[k]
-
-        for k in range(0,n-1):
-            index = cell_path[k]
-            e = Prtl[k]*Pr_zxz[k]
-            f = (1.0-Prtl[k])*Pnr_zxz[k]
-            if not np.isnan(e/(e+f)):
-                self._map.grid[index[1]][index[0]] = e/(e+f)
-
-
-
-    def sensorFM(self,n,r_s,sigma_s):
-        x = np.linspace(0,r_s,n)
-        return norm.pdf(x,loc=r_s,scale=sigma_s)
-
-
-    def publish_map(self):
-        """ Publish the map. """
-        grid_msg = self._map.to_message()
-        self._map_data_pub.publish(grid_msg.info)
-        self._map_pub.publish(grid_msg)
-        # rospy.signal_shutdown("stop spin")
-
-
-class bresenham:
-	def __init__(self, start, end):
-		self.start = list(start)
-		self.end = list(end)
-		self.path = []
-
-		self.steep = abs(self.end[1]-self.start[1]) > abs(self.end[0]-self.start[0])
-
-		if self.steep:
-			# print 'Steep'
-			self.start = self.swap(self.start[0],self.start[1])
-			self.end = self.swap(self.end[0],self.end[1])
-
-		if self.start[0] > self.end[0]:
-			# print 'flippin and floppin'
-			_x0 = int(self.start[0])
-			_x1 = int(self.end[0])
-			self.start[0] = _x1
-			self.end[0] = _x0
-
-			_y0 = int(self.start[1])
-			_y1 = int(self.end[1])
-			self.start[1] = _y1
-			self.end[1] = _y0
-
-		dx = self.end[0] - self.start[0]
-		dy = abs(self.end[1] - self.start[1])
-		error = 0
-		derr = dy/float(dx)
-
-		ystep = 0
-		y = self.start[1]
-
-		if self.start[1] < self.end[1]: ystep = 1
-		else: ystep = -1
-
-		for x in range(self.start[0],self.end[0]+1):
-			if self.steep:
-				self.path.append((y,x))
-			else:
-				self.path.append((x,y))
-
-			error += derr
-
-			if error >= 0.5:
-				y += ystep
-				error -= 1.0
-
-		# print start
-		# print end
-		# print
-		# print self.start
-		# print self.end
-
-	def swap(self,n1,n2):
-		return [n2,n1]
-"""
-l = bresenham([8,1],[6,4])
-print l.path
-
-map = []
-for x in range(0,15):
-	yc = []
-	for y in range(0,15):
-		yc.append('#')
-	map.append(yc)
-
-for pos in l.path:
-	map[pos[0]][pos[1]] = '.'
-
-for y in range(0,15):
-	for x in range(0,15):
-		print map[x][y],
-	print
-"""
 
 if __name__ == '__main__':
     try:
