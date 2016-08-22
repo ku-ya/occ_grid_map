@@ -3,7 +3,7 @@
   <arg name="stacks"     default="$(optenv TURTLEBOT_STACKS hexagons)"/>  <!-- circles, hexagons -->
   <!-- Name of the map to use (without path nor extension) and initial position -->
   <arg name="map_file"       default=" $(env TURTLEBOT_STAGE_MAP_FILE)"/> <!-- robopark_plan -->
-  <arg name="world_file"     default=" $(find occ_grid_mapping)/src/simple.world"/>
+  <arg name="world_file"     default=" $(find occ_grid_map)/src/simple.world"/>
   <arg name="initial_pose_x" default="2.0"/>
   <arg name="initial_pose_y" default="2.0"/>
   <arg name="initial_pose_a" default="0.0"/>
@@ -18,6 +18,6 @@
   </node>
   <node pkg="tf2_ros" type="static_transform_publisher" name="map_odom" args="-1 -1 0 0 0 0 1 odom map" />
   <!-- <node pkg="occ_grid_mapping" name="make_map" type="mapping.py" /> -->
-  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find occ_grid_mapping)/include/rviz/base_file.rviz"/>
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find occ_grid_map)/include/rviz/base_file.rviz"/>
  <!-- <include file="$(find turtlebot_stage)/launch/turtlebot_in_stage.launch"/> -->
 </launch>

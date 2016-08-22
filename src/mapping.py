@@ -1,16 +1,9 @@
 #!/usr/bin/env python
 """ Simple occupancy-grid-based mapping without localization.
-
-Subscribed topics                      :
-/scan
-
-Published topics                       :
-/map
-/map_metadata
-
-Author                                 : Nathan Sprague
-Version                                : 2/13/14
-"""
+Subscribed topics:/scan
+Published topics:/map /map_metadata
+Modification on Nathan Sprague's code 2/13/14
+Author: Kuya Takami"""
 import rospy
 from nav_msgs.msg import OccupancyGrid, MapMetaData
 from geometry_msgs.msg import Pose, Point, Quaternion
@@ -24,21 +17,16 @@ import matplotlib.pyplot as plt
 import message_filters
 myRes = 0.1
 
-class Map(object)                      :
+class Map(object):
     """
-    The Map class stores an occupancy grid as a two dimensional
-    numpy array.
-
+    The Map class stores an occupancy grid as a two dimensional numpy array.
     Public instance variables          :
-
         width -- Number of columns in the occupancy grid.
         height -- Number of rows in the occupancy grid.
         resolution -- Width of each grid square in meters.
         origin_x -- Position of the grid cell (0,0) in
         origin_y -- in the map coordinate system.
         grid -- numpy array with height rows and width columns.
-
-
     Note that x increases with increasing column number and y increases
     with increasing row number.
     """
@@ -46,20 +34,15 @@ class Map(object)                      :
     def __init__(self, origin_x=0, origin_y=0, resolution=myRes,
                  width=22, height=22):
         """ Construct an empty occupancy grid.
-
-        Arguments                      : origin_x,
-                   origin_y -- The position of grid cell (0,0) in the
+        Arguments : origin_x, origin_y -- The position of grid cell (0,0) in the
                                 map coordinate frame.
                    resolution-- width and height of the grid cells
                                 in meters.
-                   width,
-                   height -- The grid will have height rows and width
+                   width,height -- The grid will have height rows and width
                                 columns cells. width is the size of
                                 the x-dimension and height is the size
                                 of the y-dimension.
-
          The default arguments put (0,0) in the center of the grid.
-
         """
         self.origin_x = origin_x
         self.origin_y = origin_y
@@ -68,7 +51,7 @@ class Map(object)                      :
         self.height = height/resolution
         self.grid = 0.5*np.ones((height/resolution, width/resolution))
 
-    def to_message(self)               :
+    def to_message(self):
         """ Return a nav_msgs/OccupancyGrid representation of this map. """
 
         grid_msg = OccupancyGrid()
@@ -149,8 +132,9 @@ class Mapper(object)                   :
             r = scan.ranges[0]
             xt = [self.position[0]+1.0, self.position[1]+1.0, self.position[2]]
             # for k in range(0,len(scan.ranges)-1):
-            scanAngles = np.linspace(1/2*np.pi,-1/2*np.pi,len(scan.ranges))
-            lidar_local = np.array([xt[0]+scan.ranges*np.cos(scanAngles+xt[2]), xt[1]-(scan.ranges*np.sin(scanAngles+xt[2]))])
+
+            scanAngles = np.linspace(scan.angle_min,scan.angle_max,len(scan.ranges))
+            lidar_local = np.array([xt[0]+scan.ranges*np.cos(scanAngles+xt[2]), xt[1]+(scan.ranges*np.sin(scanAngles+xt[2]))])
 
             # print len(lidar_local[1])
             xtg = [int(np.ceil(xt[0]*Lresol)),int(np.ceil(xt[1]*Lresol))]
@@ -163,15 +147,34 @@ class Mapper(object)                   :
                     rtli[0] = int(rtl[0])
                     rtli[1] = int(rtl[1])
                     l = bresenham(xtg,rtli)
+                    # if scanAngles[k]>1./2*np.pi or scanAngles[k]<-1./2*np.pi:
+                    #     l = bresenham(xtg,rtli)
+                    # print l.path
+                    # l.path = l.path[:,::-1]
+                    # temp = l.path
+                    #
+                    # if scanAngles[k]+self.position[2]>=3.0/4*np.pi or scanAngles[k]+self.position[2]<=-1.0/4*np.pi:
+                    #     for j in range(1,len(temp)):
+                    #         temp[j] = l.path[len(temp)-j]
+                    # l.path = temp
+                    # print l.path
+                    # for j in range(0,len(l.path)):
                     self.EISM(l.path,scan.ranges[k])
             # Now that the map is updated, publish it!
             rospy.loginfo("Scan is processed, publishing updated map.")
             self.publish_map()
 
+        # perform synchronization
+
         odom_sub = message_filters.Subscriber('odom',Odometry)
         scan_sub = message_filters.Subscriber('base_scan_1',LaserScan)
         ts = message_filters.TimeSynchronizer([odom_sub,scan_sub],10)
         ts.registerCallback(callback)
+
+        # for k in range(0,np.int(self._map.width*self._map.resolution) - 1):
+        #     for j in range(0,np.int(self._map.height*self._map.resolution) - 1):
+        #         if self._map.grid[k][j] > 0.75:
+        #             self._map.grid[j][k] = 1
 
 
         # Latched publishers are used for slow changing topics like
@@ -204,7 +207,7 @@ class Mapper(object)                   :
         r = scan.ranges[0]
         xt = [self.position[0]+1, self.position[1]+1, self.position[2]]
         # for k in range(0,len(scan.ranges)-1):
-        scanAngles = np.linspace(1/2*np.pi,-1/2*np.pi,len(scan.ranges))
+        scanAngles = np.linspace(scan.angle_max,scan.angle_min,len(scan.ranges))
         lidar_local = np.array([xt[0]+scan.ranges*np.cos(scanAngles+xt[2]), xt[1]-(scan.ranges*np.sin(scanAngles+xt[2]))])
 
         # print len(lidar_local[1])
@@ -225,14 +228,14 @@ class Mapper(object)                   :
 
     def EISM(self,cell_path,r_s):
         n = len(cell_path)
-        Prtl = np.zeros(n+1)
+        Prtl = np.zeros(n)
         for k in range(0,n-1):
             index = cell_path[k]
             Prtl[k] = self._map.grid[index[1]][index[0]]
 
         # initialize
         Prtl[0] = 0.0
-        sigma_s = 0.05
+        sigma_s = 0.3
         pz_xr = self.sensorFM(n,r_s,sigma_s)
 
         # plt.plot(pz_xr)
