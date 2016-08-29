@@ -15,6 +15,7 @@ import numpy as np
 from scipy.stats import norm
 import message_filters
 from bresenham import bresenham
+import gistfile1
 myRes = 0.1
 
 class Map(object):
@@ -130,7 +131,7 @@ class Mapper(object)                   :
             self.position[2] =  yaw
             Lresol = 1/myRes
             r = scan.ranges[0]
-            xt = [self.position[0]+1.0, self.position[1]+1.0, self.position[2]]
+            xt = [self.position[0]+1., self.position[1]+1.0, self.position[2]]
             # for k in range(0,len(scan.ranges)-1):
             scan.ranges = scan.ranges
             # print scan.ranges
@@ -141,26 +142,68 @@ class Mapper(object)                   :
             xtg = [int(np.ceil(xt[0]*Lresol)),int(np.ceil(xt[1]*Lresol))]
             self._map.grid[xtg[1],xtg[0]]=0 # set the robot position grid as empty
 
-            for k in range(0,len(scan.ranges)-1):
-                if scan.ranges[k]<scan.range_max:
-                    rtl = np.ceil(lidar_local[:,k]*Lresol)
-                    rtli = [0,0]
-                    rtli[0] = int(rtl[0])
-                    rtli[1] = int(rtl[1])
-                    l = bresenham(xtg,rtli)
-                    # if scanAngles[k]>1./2*np.pi or scanAngles[k]<-1./2*np.pi:
-                    #     l = bresenham(xtg,rtli)
-                    # print l.path
-                    # l.path = l.path[:,::-1]
-                    # temp = l.path
-                    #
-                    # if scanAngles[k]+self.position[2]>=3.0/4*np.pi or scanAngles[k]+self.position[2]<=-1.0/4*np.pi:
-                    #     for j in range(1,len(temp)):
-                    #         temp[j] = l.path[len(temp)-j]
-                    # l.path = temp
-                    # print l.path
-                    # for j in range(0,len(l.path)):
-                    self.EISM(l.path,scan.ranges[k])
+            for k in range(0,len(scan.ranges)):
+              if scan.ranges[k]<scan.range_max:
+
+                rtl = np.ceil(lidar_local[:,k]*Lresol)
+                rtli = [0,0]
+                rtli[0] = int(rtl[0])
+                rtli[1] = int(rtl[1])
+
+                # l = bresenham(xtg,rtli)
+                ray =  gistfile1.Ray()
+                ray.origin = np.array([xtg[0],xtg[1]])
+
+                ray.direction = np.array([np.cos(scanAngles[k]+xt[2]),np.sin(scanAngles[k]+xt[2])])
+                ray.norm()
+
+                gridaabb = gistfile1.AABB(np.array([0,0]), np.array([self._map.width,self._map.height]))
+                grid = gistfile1.Grid(gridaabb)
+                end_pt = rtli
+                traversal = gistfile1.AmanatidesTraversal(grid, ray, end_pt, scan.ranges[k]*Lresol)
+                voxel = gistfile1.Voxel(grid)
+                path = []
+                pk = 0
+                if traversal.initialize():
+                  while(True):
+                      # Ignore while t_max is negative.
+                      if traversal.get_t_interval()[1] < 0:
+                          if not traversal.step():
+                              break
+                          continue
+                      # ray.plot(axes, traversal.get_t_interval()[0], traversal.get_t_interval()[1])
+
+                      ray_tmax_y = ray.origin + traversal.get_t_interval()[1]*ray.direction
+                      # axes.plot(ray_tmax_y[0],ray_tmax_y[1], 'or', ms=10);
+
+                      # print("voxel:", traversal.get_voxel())
+
+                      path.append(traversal.get_voxel())
+                      if np.linalg.norm(xtg-path[pk]) > scan.ranges[k]*Lresol:
+                        break
+                      # voxel.plot(axes, traversal.get_voxel()[0],traversal.get_voxel()[1])
+                      if not traversal.step():
+                          break
+                      pk += 1
+
+                # print path
+                # l.path =  path
+                # l.path = traversal.voxel
+                # l =
+                # if scanAngles[k]>1./2*np.pi or scanAngles[k]<-1./2*np.pi:
+                #     l = bresenham(xtg,rtli)
+                # print l.path
+                # l.path = l.path[:,::-1]
+                # temp = l.path
+                #
+                # if scanAngles[k]+self.position[2]>=3.0/4*np.pi or scanAngles[k]+self.position[2]<=-1.0/4*np.pi:
+                #     for j in range(1,len(temp)):
+                #         temp[j] = l.path[len(temp)-j]
+                # l.path = temp
+                # print l.path
+                # for j in range(0,len(l.path)):
+                if not len(path)==0:
+                  self.EISM(path,scan.ranges[k])
             # Now that the map is updated, publish it!
             rospy.loginfo("Scan is processed, publishing updated map.")
             self.publish_map()
@@ -169,7 +212,7 @@ class Mapper(object)                   :
 
         odom_sub = message_filters.Subscriber('odom',Odometry)
         scan_sub = message_filters.Subscriber('base_scan_1',LaserScan)
-        ts = message_filters.TimeSynchronizer([odom_sub,scan_sub],10)
+        ts = message_filters.TimeSynchronizer([odom_sub,scan_sub],1)
         ts.registerCallback(callback)
 
         # for k in range(0,np.int(self._map.width*self._map.resolution) - 1):
