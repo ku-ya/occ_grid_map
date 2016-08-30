@@ -16,7 +16,7 @@ from scipy.stats import norm
 import message_filters
 from bresenham import bresenham
 import gistfile1
-myRes = 0.1
+myRes = 0.05
 
 class Map(object):
     """
@@ -143,48 +143,47 @@ class Mapper(object)                   :
             self._map.grid[xtg[1],xtg[0]]=0 # set the robot position grid as empty
 
             for k in range(0,len(scan.ranges)):
-              if scan.ranges[k]<scan.range_max:
 
-                rtl = np.ceil(lidar_local[:,k]*Lresol)
-                rtli = [0,0]
-                rtli[0] = int(rtl[0])
-                rtli[1] = int(rtl[1])
+              rtl = np.ceil(lidar_local[:,k]*Lresol)
+              rtli = [0,0]
+              rtli[0] = int(rtl[0])
+              rtli[1] = int(rtl[1])
 
-                # l = bresenham(xtg,rtli)
-                ray =  gistfile1.Ray()
-                ray.origin = np.array([xtg[0],xtg[1]])
+              # l = bresenham(xtg,rtli)
+              ray =  gistfile1.Ray()
+              ray.origin = np.array([xtg[0],xtg[1]])
 
-                ray.direction = np.array([np.cos(scanAngles[k]+xt[2]),np.sin(scanAngles[k]+xt[2])])
-                ray.norm()
+              ray.direction = np.array([np.cos(scanAngles[k]+xt[2]),np.sin(scanAngles[k]+xt[2])])
+              ray.norm()
 
-                gridaabb = gistfile1.AABB(np.array([0,0]), np.array([self._map.width,self._map.height]))
-                grid = gistfile1.Grid(gridaabb)
-                end_pt = rtli
-                traversal = gistfile1.AmanatidesTraversal(grid, ray, end_pt, scan.ranges[k]*Lresol)
-                voxel = gistfile1.Voxel(grid)
-                path = []
-                pk = 0
-                if traversal.initialize():
-                  while(True):
-                      # Ignore while t_max is negative.
-                      if traversal.get_t_interval()[1] < 0:
-                          if not traversal.step():
-                              break
-                          continue
-                      # ray.plot(axes, traversal.get_t_interval()[0], traversal.get_t_interval()[1])
+              gridaabb = gistfile1.AABB(np.array([0,0]), np.array([self._map.width,self._map.height]))
+              grid = gistfile1.Grid(gridaabb)
+              end_pt = rtli
+              traversal = gistfile1.AmanatidesTraversal(grid, ray, end_pt, scan.ranges[k]*Lresol)
+              voxel = gistfile1.Voxel(grid)
+              path = []
+              pk = 0
+              if traversal.initialize():
+                while(True):
+                    # Ignore while t_max is negative.
+                    if traversal.get_t_interval()[1] < 0:
+                        if not traversal.step():
+                            break
+                        continue
+                    # ray.plot(axes, traversal.get_t_interval()[0], traversal.get_t_interval()[1])
 
-                      ray_tmax_y = ray.origin + traversal.get_t_interval()[1]*ray.direction
-                      # axes.plot(ray_tmax_y[0],ray_tmax_y[1], 'or', ms=10);
+                    ray_tmax_y = ray.origin + traversal.get_t_interval()[1]*ray.direction
+                    # axes.plot(ray_tmax_y[0],ray_tmax_y[1], 'or', ms=10);
 
-                      # print("voxel:", traversal.get_voxel())
+                    # print("voxel:", traversal.get_voxel())
 
-                      path.append(traversal.get_voxel())
-                      if np.linalg.norm(xtg-path[pk]) > scan.ranges[k]*Lresol:
+                    path.append(traversal.get_voxel())
+                    if np.linalg.norm(xtg-path[pk]) > scan.ranges[k]*Lresol:
+                      break
+                    # voxel.plot(axes, traversal.get_voxel()[0],traversal.get_voxel()[1])
+                    if not traversal.step():
                         break
-                      # voxel.plot(axes, traversal.get_voxel()[0],traversal.get_voxel()[1])
-                      if not traversal.step():
-                          break
-                      pk += 1
+                    pk += 1
 
                 # print path
                 # l.path =  path
@@ -202,8 +201,13 @@ class Mapper(object)                   :
                 # l.path = temp
                 # print l.path
                 # for j in range(0,len(l.path)):
+
                 if not len(path)==0:
-                  self.EISM(path,scan.ranges[k])
+                  if scan.ranges[k]<scan.range_max:
+                    self.EISM(path,scan.ranges[k],0)
+                  else:
+                    self.EISM(path, scan.ranges[k],1)
+
             # Now that the map is updated, publish it!
             rospy.loginfo("Scan is processed, publishing updated map.")
             self.publish_map()
@@ -229,7 +233,7 @@ class Mapper(object)                   :
 
         rospy.spin()
 
-    def EISM(self,cell_path,r_s):
+    def EISM(self,cell_path,r_s,oorange):
         n = len(cell_path)
         Prtl = np.zeros(n)
         for k in range(0,n-1):
@@ -238,9 +242,11 @@ class Mapper(object)                   :
 
         # initialize
         Prtl[0] = 0.0
-        sigma_s = myRes*3
-        pz_xr = self.sensorFM(n,r_s,sigma_s)
-
+        sigma_s = myRes*1.
+        if oorange == 0:
+          pz_xr = self.sensorFM(n,r_s,sigma_s)
+        else:
+          pz_xr = self.sensorFM(n,r_s*3.,sigma_s*3.)
         # plt.plot(pz_xr)
         # plt.show()
 
@@ -272,8 +278,16 @@ class Mapper(object)                   :
             index = cell_path[k]
             e = Prtl[k]*Pr_zxz[k]
             f = (1.0-Prtl[k])*Pnr_zxz[k]
+            # if e == 0:
+            #   e = 1e-12
+            # if f == 0:
+            #   f = 1e-12
+
             if not np.isnan(e/(e+f)):
+              if oorange == 0:
                 self._map.grid[index[1]][index[0]] = e/(e+f)
+              else:
+                self._map.grid[index[1]][index[0]] = 0.01
 
     def sensorFM(self,n,r_s,sigma_s):
         x = np.linspace(0,r_s,n)
