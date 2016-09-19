@@ -16,7 +16,7 @@
     <remap from="cmd_vel" to="mobile_base/commands/velocity"/>
     <remap from="base_scan" to="scan"/>
   </node>
-  <node pkg="tf2_ros" type="static_transform_publisher" name="map_odom" args="-1 -1 0 0 0 0 1 odom map" />
+  <node pkg="tf2_ros" type="static_transform_publisher" name="map_odom" args="5 -5.5 0 0 0 1 odom map" />
 
   <node name="rviz" pkg="rviz" type="rviz" args="-d $(find occ_grid_map)/include/rviz/base_file.rviz"/>
   <node pkg="occ_grid_map" name="make_map" type="mapping.py" />
