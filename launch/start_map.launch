@@ -2,7 +2,7 @@
   <arg name="base"       default="$(optenv TURTLEBOT_BASE kobuki)"/>  <!-- create, rhoomba -->
   <arg name="stacks"     default="$(optenv TURTLEBOT_STACKS hexagons)"/>  <!-- circles, hexagons -->
   <!-- Name of the map to use (without path nor extension) and initial position -->
-  <arg name="map_file"       default=" $(env TURTLEBOT_STAGE_MAP_FILE)"/> <!-- robopark_plan -->
+  <arg name="map_file"  default=" $(find ogm_ae)/launch/stage-worlds/intel.gfs"/> <!-- robopark_plan -->
   <arg name="world_file"     default=" $(find occ_grid_map)/src/simple.world"/>
   <arg name="initial_pose_x" default="2.0"/>
   <arg name="initial_pose_y" default="2.0"/>

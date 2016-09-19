@@ -30,7 +30,7 @@ floorplan
   name "test_map"
   size [20.000 20.000 0.800]
   pose [10 10 0 0]
-  bitmap "bitmaps/test_map.png"
+  bitmap "bitmaps/intel.gfs"
 )
 
 
