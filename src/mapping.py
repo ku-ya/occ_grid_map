@@ -33,7 +33,7 @@ class Map(object):
     """
 
     def __init__(self, origin_x=0., origin_y=0., resolution=myRes,
-                 width=30., height=30.):
+                 width=30, height=30):
         """ Construct an empty occupancy grid.
         Arguments : origin_x, origin_y -- The position of grid cell (0,0) in the
                                 map coordinate frame.
@@ -130,7 +130,7 @@ class Mapper(object)                   :
             self.rotation =  yaw
             Lresol = 1./myRes
             r = scan.ranges[0]
-            xt = [self.position.x+20., self.position.y+9.0, self.rotation]
+            xt = [self.position.x+22.5, self.position.y+3.5, self.rotation]
             # for k in range(0,len(scan.ranges)-1):
             # scan.ranges = scan.ranges
             # print scan.ranges
@@ -204,7 +204,7 @@ class Mapper(object)                   :
         # perform synchronization
 
         odom_sub = message_filters.Subscriber('odom',Odometry)
-        scan_sub = message_filters.Subscriber('scan',LaserScan)
+        scan_sub = message_filters.Subscriber('base_scan',LaserScan)
         ts = message_filters.TimeSynchronizer([odom_sub,scan_sub],1)
         ts.registerCallback(callback)
 
@@ -216,9 +216,9 @@ class Mapper(object)                   :
 
         # Latched publishers are used for slow changing topics like
         # maps. Data will sit on the topic until someone reads it.
-        self._map_pub = rospy.Publisher('map', OccupancyGrid, latch=True)
+        self._map_pub = rospy.Publisher('map', OccupancyGrid,queue_size=10 ,latch=True)
         self._map_data_pub = rospy.Publisher('map_metadata',
-                                             MapMetaData, latch=True)
+                                             MapMetaData, queue_size=10,latch=True)
 
         rospy.spin()
 
