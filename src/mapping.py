@@ -119,6 +119,8 @@ class Mapper(object)                   :
                                     #  Odometry, self.odom_callback, queue_size=1)
             # rospy.Subscriber('base_scan_1',
                                     #  LaserScan, self.scan_callback, queue_size=1)
+
+            # receive the sensor data for processing
             pos =  odom.pose.pose.position
             self.position = pos
             orientation = odom.pose.pose.orientation
@@ -131,13 +133,10 @@ class Mapper(object)                   :
             Lresol = 1./myRes
             r = scan.ranges[0]
             xt = [self.position.x+22.5, self.position.y+3.5, self.rotation]
-            # for k in range(0,len(scan.ranges)-1):
-            # scan.ranges = scan.ranges
-            # print scan.ranges
+
             scanAngles = np.linspace(scan.angle_min,scan.angle_max,len(scan.ranges),-1)
             lidar_local = np.array([xt[0]+scan.ranges*np.cos(scanAngles+xt[2]), xt[1]+(scan.ranges*np.sin(scanAngles+xt[2]))])
 
-            # print len(lidar_local[1])
             xtg = [int(np.ceil(xt[0]*Lresol)),int(np.ceil(xt[1]*Lresol))]
             self._map.grid[xtg[1],xtg[0]]=0 # set the robot position grid as empty
 
@@ -148,7 +147,6 @@ class Mapper(object)                   :
               rtli[0] = int(rtl[0])
               rtli[1] = int(rtl[1])
 
-              # l = bresenham(xtg,rtli)
               ray =  gistfile1.Ray()
               ray.origin = np.array([xtg[0],xtg[1]])
 
@@ -195,7 +193,7 @@ class Mapper(object)                   :
                 # print l.path
                 # for j in range(0,len(l.path)):
                 if not len(path)==0:
-                  self.EISM(path,scan.ranges[k],scan.ranges[k] < scan.range_max)
+                  self.AISM(path,scan.ranges[k],scan.ranges[k] < scan.range_max)
 
             # Now that the map is updated, publish it!
             rospy.loginfo("Scan is processed, publishing updated map.")
@@ -276,12 +274,39 @@ class Mapper(object)                   :
             else:
               if not oorange:
                 self._map.grid[index[1]][index[0]] = 0.1
+    def AISM(self, cell_path, r_s, oorange):
+        n = len(cell_path)
+        Prtl = np.zeros(n)
+        Pnrtl = np.zeros(n)
+        for k in range(0,n-1):
+            index = cell_path[k]
+            Prtl[k] = self._map.grid[index[1]][index[0]]
+        Pnrtl = 1. - Prtl
+        rangelim = 4
+        Prtl[0] = 1.0e-10
+        Pnrtl[0] = 1.-Prtl[0]
+        sigma = myRes*3.
+        rho = 0.6
+        sigma = 0.6
+        # Prtl[n] = 1
+        pz_xr = self.sensorFM(n,r_s*3.,sigma*3.)
+        pr_zx = np.zeros(n)
+        for k in range(0,n-1):
+            if r_s*k/n < rangelim:
+                pr_zx[k] = 0.3 + (rho/(sigma*np.sqrt(2*np.pi))+0.2)*np.exp(-1/2*(((rangelim-r_s*k/n))/sigma)**2)
+            else:
+                pr_zx[k] = 0.5 + (rho/(sigma*np.sqrt(2*np.pi)))*np.exp(-1/2*((rangelim-r_s*k/n)/sigma)**2)
+        for k in range(0,n-1):
+            ogmap = np.log(Prtl[k]/(1. - Prtl[k])) + np.log(pr_zx[k]/(1. - pr_zx[k]))
+            if ogmap == float('-inf'):
+                print Prtl[k] , 'Pr_zx', pr_zx[k]
+            self._map.grid[index[1]][index[0]] = 1. - 1./(1. + np.exp(ogmap))
 
     def sensorFM(self,n,r_s,sigma_s):
         x = np.linspace(0.,r_s,n)
         model = norm.pdf(x,loc=r_s,scale=sigma_s)
         # return model
-        model[0:n-3] = 0.
+        model[0:n-3] = 1.0e-10
         return model*5.
 
     def publish_map(self):
